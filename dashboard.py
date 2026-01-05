@@ -1,19 +1,39 @@
+import os
+import sys
 import time
+import serial
+import logging
 import threading
 from collections import deque
 from datetime import datetime
-
-import serial
 import plotly.graph_objs as go
 from dash import Dash, dcc, html, Input, Output
 
-from log_values import log_arduino_value
+from threading import Lock
+from data_check import oof_values, threshold_management, format_values
+
+
+LOG_DIR = "logs"
+if not os.path.exists(LOG_DIR):
+    os.makedirs(LOG_DIR)
+# Configure logging
+log_filename = os.path.join(LOG_DIR, f"arduino_data_{datetime.now().strftime('%Y%m%d')}.log")
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_filename),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 SERIAL_PORT = "/dev/ttyACM0"
 BAUD_RATE = 9600
-MAX_POINTS = 300              
-UPDATE_MS = 1000
+MAX_POINTS = 120              
+UPDATE_MS = 200
 
+data_lock = Lock()
 timestamps = deque(maxlen=MAX_POINTS)
 hum_buf = deque(maxlen=MAX_POINTS)
 temp_buf = deque(maxlen=MAX_POINTS)
@@ -22,6 +42,16 @@ o2_buf = deque(maxlen=MAX_POINTS)
 light_buf = deque(maxlen=MAX_POINTS)
 
 def parse_line(line: str):
+    """ 
+        Parse a line of serial data into a dictionary.
+        Expected format: "humidity,temperature,co2,o2,light
+        
+        Args:
+            line: A string from the serial port
+        
+        Returns:
+            A dictionary with keys: humidity, temperature, co2, o2, light
+    """
     parts = line.strip().split(",")
     if len(parts) != 5:
         return None
@@ -29,41 +59,55 @@ def parse_line(line: str):
         return {
             'humidity': float(parts[0]),
             'temperature': float(parts[1]),
-            'co2': int(parts[2]),
-            'o2': int(parts[3]),
-            'light': int(parts[4])
+            'co2': float(parts[2]),
+            'o2': float(parts[3]),
+            'light': float(parts[4])
         }
     except ValueError:
         return None
     
 def serial_reader():
+    """ 
+        Thread function to read from serial port continuously.
+        Parses data and appends to buffers.
+
+        Args:
+            None
+
+        Returns: 
+            None
+    """
     while True:
         try:
             with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1) as ser:
-                time.sleep(0.5)  # reset Arduino
+                time.sleep(1)  # reset Arduino
                 while True:
                     raw = ser.readline().decode("utf-8", errors="ignore").strip()
                     if not raw:
                         continue
-                    # print(f"Raw datas: {raw}")
                     parsed = parse_line(raw)
                     if parsed is None:
                         continue
+                    
+                    parsed = parsed.copy()
+                    cleaned, was_corrected, fields = oof_values(parsed)
+                    # cleaned = oof_values(parsed)
+                    if was_corrected:
+                        logger.warning("OOF - " + format_values(parsed))
+                        logger.warning("CORRECTED: " + ", ".join(fields))
 
+                    logger.info(format_values(cleaned))
+                    
                     now = datetime.now()
                     timestamps.append(now)
-                    hum_buf.append(parsed['humidity'])
-                    temp_buf.append(parsed['temperature'])
-                    co2_buf.append(parsed['co2'])
-                    o2_buf.append(parsed['o2'])
-                    light = (parsed['light'] / 1023) * 100
-                    light_buf.append(light)
-
-                    # log the values
-                    log_arduino_value(parsed)
+                    hum_buf.append(cleaned['humidity'])
+                    temp_buf.append(cleaned['temperature'])
+                    co2_buf.append(cleaned['co2'])
+                    o2_buf.append(cleaned['o2'])
+                    light_buf.append(cleaned['light'])
 
         except Exception as e:
-            print("Serial error:", e)
+            logger.warning(f"Serial read error: {e}")
             time.sleep(1)
 
 t = threading.Thread(target=serial_reader, daemon=True)
@@ -74,7 +118,6 @@ app = Dash(__name__)
 app.layout = html.Div([
     html.H2("Dashboard Arduino – Environnement"),
 
-    # Affichage des valeurs instantanées
     html.Div([
         html.Div(id="value-temp", style={"padding": "10px"}),
         html.Div(id="value-hum", style={"padding": "10px"}),
@@ -84,7 +127,7 @@ app.layout = html.Div([
     ], style={"display": "flex", "flexWrap": "wrap"}),
 
     dcc.Graph(id="graph-temp"),
-    dcc.Graph(id="graph-gas-light"),
+    dcc.Graph(id="graph-gas"),
     dcc.Graph(id="graph-humidity"),
     dcc.Graph(id="graph-light"),
 
@@ -103,20 +146,32 @@ app.layout = html.Div([
         Output("value-o2", "children"),
         Output("value-light", "children"),
         Output("graph-temp", "figure"),
-        Output("graph-gas-light", "figure"),
+        Output("graph-gas", "figure"),
         Output("graph-humidity", "figure"),
         Output("graph-light", "figure"),
     ],
     Input("interval-component", "n_intervals")
 )
-def update_dashboard(n):
-    if not timestamps:
-        empty_text = "waiting for datas..."
-        empty_fig = go.Figure()
-        return (empty_text,)*5 + (empty_fig, empty_fig)
 
+def update_dashboard(n: int):
+    """ 
+        Update dashboard values and graphs.
+        
+        Args:
+            n: Number of intervals passed (not used)
+
+        Returns:
+            Updated values and figures for the dashboard
+    """
+    with data_lock:
+        if not timestamps:
+            empty_text = "waiting for datas..."
+            empty_fig = go.Figure()
+            return (empty_text, empty_text, empty_text, empty_text, empty_text,
+                    empty_fig, empty_fig, empty_fig, empty_fig)
+
+    
     x = list(timestamps)
-
 
     # TEMP 
     temp_fig = go.Figure()
@@ -125,19 +180,21 @@ def update_dashboard(n):
         title="Temperature",
         xaxis_title="Time",
         yaxis=dict(title="Temp (°C)", side="left"),
-        legend=dict(orientation="h")
+        legend=dict(orientation="h"),
+        transition={'duration': 100}
     )
 
 
     #02/C02
     gas_fig = go.Figure()
-    gas_fig.add_trace(go.Scatter(x=x, y=list(co2_buf), mode="lines", name="CO2 sim"))
-    gas_fig.add_trace(go.Scatter(x=x, y=list(o2_buf), mode="lines", name="O2 sim"))
+    gas_fig.add_trace(go.Scatter(x=x, y=list(co2_buf), mode="lines", name="CO2 ppm"))
+    gas_fig.add_trace(go.Scatter(x=x, y=list(o2_buf), mode="lines", name="O2 %"))
     gas_fig.update_layout(
         title="O2/CO2 values (simulated)",
         xaxis_title="Temps",
         yaxis_title="Values",
-        legend=dict(orientation="h")
+        legend=dict(orientation="h"),
+        transition={'duration': 100}
     )
 
     # HUM
@@ -156,8 +213,9 @@ def update_dashboard(n):
     light_fig.update_layout(
         title="Light",
         xaxis_title="Time",
-        yaxis_title="Values",
-        legend=dict(orientation="h")
+        yaxis_title="Light (%)",
+        legend=dict(orientation="h"),
+        transition={'duration': 100}
     )
 
     last_temp  = temp_buf[-1]
@@ -167,16 +225,25 @@ def update_dashboard(n):
     last_light = light_buf[-1]
 
     return (
-        f"Température actuelle : {last_temp:.1f} °C",
-        f"Humidité actuelle : {last_hum:.1f} %",
-        f"CO2 (sim) : {last_co2}",
-        f"O2 (sim) : {last_o2}",
-        f"Lumière : {last_light}",
+        f"Temperature : {last_temp:.1f} °C",
+        f"Humidity : {last_hum:.1f} %",
+        f"CO2 (simulated) : {last_co2} ppm",
+        f"O2 (simulated) : {last_o2} %",
+        f"Light : {last_light} %",
         temp_fig,
         gas_fig,
         hum_fig,
         light_fig,     
     )
 
+
+debug_mode = True
+if len(sys.argv) > 1:
+    arg = sys.argv[1].lower()
+    if arg in ['-false', 'false', '0']:
+        debug_mode = False
+    elif arg in ['-true', 'true', '1']:
+        debug_mode = True
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=debug_mode)
