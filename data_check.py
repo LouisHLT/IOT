@@ -68,7 +68,6 @@ def oof_values(parsed_data: Dict[str, Any]):#TODO dev tests to check if oot valu
     corrected = False
     corrected_fields = []
 
-
     # Out of range checks
     if not ( -10 <= temp <= 50):
         corrected = True
@@ -96,6 +95,9 @@ def oof_values(parsed_data: Dict[str, Any]):#TODO dev tests to check if oot valu
         light = mean([0,50])  # set to medium light if oof
         print("light oof set to medium:", light)
 
+    print("corrected fields:", corrected_fields)
+    print("temp:", temp, "hum:", hum, "co2:", co2, "o2:", o2, "light:", light)
+
     cleaned = {
         "temperature": temp,
         "humidity": hum,
@@ -104,6 +106,7 @@ def oof_values(parsed_data: Dict[str, Any]):#TODO dev tests to check if oot valu
         "light": light
     }
 
+    # return cleaned
     return cleaned, corrected, corrected_fields
 
 def threshold_management():
