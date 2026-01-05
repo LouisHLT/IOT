@@ -80,7 +80,7 @@ def serial_reader():
     while True:
         try:
             with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1) as ser:
-                time.sleep(1)  # reset Arduino
+                time.sleep(2)  # reset Arduino
                 while True:
                     raw = ser.readline().decode("utf-8", errors="ignore").strip()
                     if not raw:
