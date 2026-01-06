@@ -211,12 +211,13 @@ def update_dashboard(n: int):
 
     #02/C02
     gas_fig = go.Figure()
-    gas_fig.add_trace(go.Scatter(x=x, y=list(co2_buf), mode="lines", name="CO2 ppm"))
-    gas_fig.add_trace(go.Scatter(x=x, y=list(o2_buf), mode="lines", name="O2 %"))
+    gas_fig.add_trace(go.Scatter(x=x, y=list(co2_buf), mode="lines", name="CO2 ppm", yaxis="y"))
+    gas_fig.add_trace(go.Scatter(x=x, y=list(o2_buf), mode="lines", name="O2 %", yaxis="y2"))
     gas_fig.update_layout(
         title="O2/CO2 values (simulated)",
         xaxis_title="Temps",
-        yaxis_title="Values",
+        yaxis=dict(title="CO2 (ppm)", side="left"),
+        yaxis2=dict(title="O2 (%)", side="right", overlaying="y"),
         legend=dict(orientation="h"),
         transition={'duration': 100}
     )
