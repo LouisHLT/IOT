@@ -41,7 +41,9 @@ General Home Areas (Living Room, Bedroom): 5–20% (50-200 lux), with flexibilit
 """
 
 def format_values(values):
-    return (f"Temp:{values['temperature']:.1f}°C | "
+    device_id = values.get('device_id', 'unknown')
+    return (f"[Device:{device_id}] "
+            f"Temp:{values['temperature']:.1f}°C | "
             f"Hum:{values['humidity']:.1f}% | "
             f"CO2:{values['co2']} | "
             f"O2:{values['o2']} | "
@@ -99,6 +101,7 @@ def oof_values(parsed_data: Dict[str, Any]):#TODO dev tests to check if oot valu
     print("temp:", temp, "hum:", hum, "co2:", co2, "o2:", o2, "light:", light)
 
     cleaned = {
+        "device_id": parsed_data.get("device_id", "default"),
         "temperature": temp,
         "humidity": hum,
         "co2": co2,

@@ -35,6 +35,7 @@ UPDATE_MS = 200
 
 data_lock = Lock()
 timestamps = deque(maxlen=MAX_POINTS)
+device_ids = deque(maxlen=MAX_POINTS)
 hum_buf = deque(maxlen=MAX_POINTS)
 temp_buf = deque(maxlen=MAX_POINTS)
 co2_buf = deque(maxlen=MAX_POINTS)
@@ -44,26 +45,45 @@ light_buf = deque(maxlen=MAX_POINTS)
 def parse_line(line: str):
     """ 
         Parse a line of serial data into a dictionary.
-        Expected format: "humidity,temperature,co2,o2,light
+        Expected format: "device_id,humidity,temperature,co2,o2,light" (with device_id)
+        or "humidity,temperature,co2,o2,light" (legacy format without device_id)
         
         Args:
             line: A string from the serial port
         
         Returns:
-            A dictionary with keys: humidity, temperature, co2, o2, light
+            A dictionary with keys: device_id, humidity, temperature, co2, o2, light
     """
     parts = line.strip().split(",")
-    if len(parts) != 5:
-        return None
-    try:
-        return {
-            'humidity': float(parts[0]),
-            'temperature': float(parts[1]),
-            'co2': float(parts[2]),
-            'o2': float(parts[3]),
-            'light': float(parts[4])
-        }
-    except ValueError:
+    
+    # Handle format with device_id (6 parts)
+    if len(parts) == 6:
+        try:
+            return {
+                'device_id': parts[0],
+                'humidity': float(parts[1]),
+                'temperature': float(parts[2]),
+                'co2': float(parts[3]),
+                'o2': float(parts[4]),
+                'light': float(parts[5])
+            }
+        except ValueError:
+            return None
+    
+    # Handle legacy format without device_id (5 parts)
+    elif len(parts) == 5:
+        try:
+            return {
+                'device_id': 'arduino_wired',  # Default ID for wired Arduino
+                'humidity': float(parts[0]),
+                'temperature': float(parts[1]),
+                'co2': float(parts[2]),
+                'o2': float(parts[3]),
+                'light': float(parts[4])
+            }
+        except ValueError:
+            return None
+    else:
         return None
     
 def serial_reader():
@@ -100,6 +120,7 @@ def serial_reader():
                     
                     now = datetime.now()
                     timestamps.append(now)
+                    device_ids.append(cleaned['device_id'])
                     hum_buf.append(cleaned['humidity'])
                     temp_buf.append(cleaned['temperature'])
                     co2_buf.append(cleaned['co2'])
@@ -117,6 +138,8 @@ app = Dash(__name__)
 
 app.layout = html.Div([
     html.H2("Dashboard Arduino – Environnement"),
+    
+    html.Div(id="device-info", style={"padding": "10px", "fontWeight": "bold", "fontSize": "16px"}),
 
     html.Div([
         html.Div(id="value-temp", style={"padding": "10px"}),
@@ -140,6 +163,7 @@ app.layout = html.Div([
 
 @app.callback(
     [
+        Output("device-info", "children"),
         Output("value-temp", "children"),
         Output("value-hum", "children"),
         Output("value-co2", "children"),
@@ -167,7 +191,7 @@ def update_dashboard(n: int):
         if not timestamps:
             empty_text = "waiting for datas..."
             empty_fig = go.Figure()
-            return (empty_text, empty_text, empty_text, empty_text, empty_text,
+            return (empty_text, empty_text, empty_text, empty_text, empty_text, empty_text,
                     empty_fig, empty_fig, empty_fig, empty_fig)
 
     
@@ -218,6 +242,7 @@ def update_dashboard(n: int):
         transition={'duration': 100}
     )
 
+    last_device_id = device_ids[-1]
     last_temp  = temp_buf[-1]
     last_hum   = hum_buf[-1]
     last_co2   = co2_buf[-1]
@@ -225,6 +250,7 @@ def update_dashboard(n: int):
     last_light = light_buf[-1]
 
     return (
+        f"📡 Device ID: {last_device_id}",
         f"Temperature : {last_temp:.1f} °C",
         f"Humidity : {last_hum:.1f} %",
         f"CO2 (simulated) : {last_co2} ppm",
