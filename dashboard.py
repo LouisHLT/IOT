@@ -9,25 +9,15 @@ from datetime import datetime
 import plotly.graph_objs as go
 from dash import Dash, dcc, html, Input, Output
 
+import data_check as dc
 from threading import Lock
-from data_check import oof_values, threshold_management, format_values
+import database.utils as dbu
+from input_parsing import parse_line
+from logger import logger
 
 
-LOG_DIR = "logs"
-if not os.path.exists(LOG_DIR):
-    os.makedirs(LOG_DIR)
-# Configure logging
-log_filename = os.path.join(LOG_DIR, f"arduino_data_{datetime.now().strftime('%Y%m%d')}.log")
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_filename),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
-
+STATION_CACHE = {}
+STATION_LOCK = Lock()
 SERIAL_PORT = "/dev/ttyACM0"
 BAUD_RATE = 9600
 MAX_POINTS = 120              
@@ -42,50 +32,6 @@ co2_buf = deque(maxlen=MAX_POINTS)
 o2_buf = deque(maxlen=MAX_POINTS)
 light_buf = deque(maxlen=MAX_POINTS)
 
-def parse_line(line: str):
-    """ 
-        Parse a line of serial data into a dictionary.
-        Expected format: "device_id,humidity,temperature,co2,o2,light" (with device_id)
-        or "humidity,temperature,co2,o2,light" (legacy format without device_id)
-        
-        Args:
-            line: A string from the serial port
-        
-        Returns:
-            A dictionary with keys: device_id, humidity, temperature, co2, o2, light
-    """
-    parts = line.strip().split(",")
-    
-    # Handle format with device_id (6 parts)
-    if len(parts) == 6:
-        try:
-            return {
-                'device_id': parts[0],
-                'humidity': float(parts[1]),
-                'temperature': float(parts[2]),
-                'co2': float(parts[3]),
-                'o2': float(parts[4]),
-                'light': float(parts[5])
-            }
-        except ValueError:
-            return None
-    
-    # Handle legacy format without device_id (5 parts)
-    elif len(parts) == 5:
-        try:
-            return {
-                'device_id': 'arduino_wired',  # Default ID for wired Arduino
-                'humidity': float(parts[0]),
-                'temperature': float(parts[1]),
-                'co2': float(parts[2]),
-                'o2': float(parts[3]),
-                'light': float(parts[4])
-            }
-        except ValueError:
-            return None
-    else:
-        return None
-    
 def serial_reader():
     """ 
         Thread function to read from serial port continuously.
@@ -110,16 +56,30 @@ def serial_reader():
                         continue
                     
                     parsed = parsed.copy()
-                    cleaned, was_corrected, fields = oof_values(parsed)
+
+                    cleaned, was_corrected, fields = dc.oof_values(parsed)
                     # cleaned = oof_values(parsed)
                     if was_corrected:
-                        logger.warning("OOF - " + format_values(parsed))
+                        logger.warning("OOF - " + dc.format_values(parsed))
                         logger.warning("CORRECTED: " + ", ".join(fields))
 
-                    logger.info(format_values(cleaned))
-                    
+                    logger.info(dc.format_values(cleaned))
+
+                    station_id = get_or_create_station_id(cleaned["device_id"])
+
                     now = datetime.now()
                     timestamps.append(now)
+                    
+                    dbu.add_reading(
+                        station_id=station_id,
+                        temperature=cleaned["temperature"],
+                        humidity=cleaned["humidity"],
+                        co2=cleaned["co2"],
+                        o2=cleaned["o2"],
+                        light=cleaned["light"],
+                        ts=now,
+                    )
+                    
                     device_ids.append(cleaned['device_id'])
                     hum_buf.append(cleaned['humidity'])
                     temp_buf.append(cleaned['temperature'])
@@ -251,7 +211,7 @@ def update_dashboard(n: int):
     last_light = light_buf[-1]
 
     return (
-        f"📡 Device ID: {last_device_id}",
+        f"Station ID: {last_device_id}",
         f"Temperature : {last_temp:.1f} °C",
         f"Humidity : {last_hum:.1f} %",
         f"CO2 (simulated) : {last_co2} ppm",
@@ -262,6 +222,15 @@ def update_dashboard(n: int):
         hum_fig,
         light_fig,     
     )
+
+def get_or_create_station_id(device_id: str) -> int:
+    with STATION_LOCK:
+        if device_id in STATION_CACHE:
+            return STATION_CACHE[device_id]
+
+        station_id = dbu.add_station(device_id=device_id)
+        STATION_CACHE[device_id] = station_id
+        return station_id
 
 
 debug_mode = True
