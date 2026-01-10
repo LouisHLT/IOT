@@ -11,26 +11,35 @@ from dash import Dash, dcc, html, Input, Output
 
 import data_check as dc
 from threading import Lock
-import database.utils as dbu
+import database.utils as dbutils
 from input_parsing import parse_line
 from logger import logger
 
 
 STATION_CACHE = {}
 STATION_LOCK = Lock()
+STATIONS = {}
 SERIAL_PORT = "/dev/ttyACM0"
 BAUD_RATE = 9600
 MAX_POINTS = 120              
 UPDATE_MS = 200
 
-data_lock = Lock()
-timestamps = deque(maxlen=MAX_POINTS)
-device_ids = deque(maxlen=MAX_POINTS)
-hum_buf = deque(maxlen=MAX_POINTS)
-temp_buf = deque(maxlen=MAX_POINTS)
-co2_buf = deque(maxlen=MAX_POINTS)
-o2_buf = deque(maxlen=MAX_POINTS)
-light_buf = deque(maxlen=MAX_POINTS)
+def make_station_buffers():
+    """ 
+        Create buffers for storing station data.
+
+        Returns:
+            A dictionary containing deques for each sensor value.
+    """
+    return {
+        "timestamps": deque(maxlen=MAX_POINTS),
+        "temp": deque(maxlen=MAX_POINTS),
+        "hum": deque(maxlen=MAX_POINTS),
+        "co2": deque(maxlen=MAX_POINTS),
+        "o2": deque(maxlen=MAX_POINTS),
+        "light": deque(maxlen=MAX_POINTS),
+        "last_seen": None,
+    }
 
 def serial_reader():
     """ 
@@ -58,19 +67,25 @@ def serial_reader():
                     parsed = parsed.copy()
 
                     cleaned, was_corrected, fields = dc.oof_values(parsed)
-                    # cleaned = oof_values(parsed)
+
+                    sid = cleaned["device_id"]
+
+                    with STATION_LOCK: # ensure thread-safe access to STATIONS
+                        if sid not in STATIONS: # create buffers if new station
+                            STATIONS[sid] = make_station_buffers() # initialize buffers; store the station datas
+
                     if was_corrected:
                         logger.warning("OOF - " + dc.format_values(parsed))
                         logger.warning("CORRECTED: " + ", ".join(fields))
 
                     logger.info(dc.format_values(cleaned))
 
-                    station_id = get_or_create_station_id(cleaned["device_id"])
+                    station_id = get_or_create_station_id(cleaned["device_id"]) # get or create station in DB
 
+                    station = STATIONS[sid]
                     now = datetime.now()
-                    timestamps.append(now)
                     
-                    dbu.add_reading(
+                    dbutils.add_reading(
                         station_id=station_id,
                         temperature=cleaned["temperature"],
                         humidity=cleaned["humidity"],
@@ -79,13 +94,14 @@ def serial_reader():
                         light=cleaned["light"],
                         ts=now,
                     )
-                    
-                    device_ids.append(cleaned['device_id'])
-                    hum_buf.append(cleaned['humidity'])
-                    temp_buf.append(cleaned['temperature'])
-                    co2_buf.append(cleaned['co2'])
-                    o2_buf.append(cleaned['o2'])
-                    light_buf.append(cleaned['light'])
+
+                    station["timestamps"].append(now)
+                    station["temp"].append(cleaned["temperature"])
+                    station["hum"].append(cleaned["humidity"])
+                    station["co2"].append(cleaned["co2"])
+                    station["o2"].append(cleaned["o2"])
+                    station["light"].append(cleaned["light"])
+                    station["last_seen"] = now
 
         except Exception as e:
             logger.warning(f"Serial read error: {e}")
@@ -138,97 +154,95 @@ app.layout = html.Div([
 )
 
 def update_dashboard(n: int):
-    """ 
-        Update dashboard values and graphs.
-        
-        Args:
-            n: Number of intervals passed (not used)
-
-        Returns:
-            Updated values and figures for the dashboard
     """
-    with data_lock:
-        if not timestamps:
+    Update dashboard values and graphs
+    (shows the most recently active station)
+    """
+
+    with STATION_LOCK:
+        if not STATIONS:
             empty_text = "waiting for datas..."
             empty_fig = go.Figure()
             return (empty_text, empty_text, empty_text, empty_text, empty_text, empty_text,
                     empty_fig, empty_fig, empty_fig, empty_fig)
 
-    
-    x = list(timestamps)
+        # pick the most recently updated station
+        sid, station = max(
+            STATIONS.items(),
+            key=lambda item: item[1]["last_seen"] or datetime.min
+        )
 
-    # TEMP 
+        if not station["timestamps"]:
+            empty_text = "waiting for datas..."
+            empty_fig = go.Figure()
+            return (empty_text, empty_text, empty_text, empty_text, empty_text, empty_text,
+                    empty_fig, empty_fig, empty_fig, empty_fig)
+
+        x = list(station["timestamps"])
+        temp = list(station["temp"])
+        hum = list(station["hum"])
+        co2 = list(station["co2"])
+        o2 = list(station["o2"])
+        light = list(station["light"])
+
+    # -------- GRAPHS --------
+
     temp_fig = go.Figure()
-    temp_fig.add_trace(go.Scatter(x=x, y=list(temp_buf), mode="lines", name="Temp (°C)"))
+    temp_fig.add_trace(go.Scatter(x=x, y=temp, mode="lines", name="Temp (°C)"))
     temp_fig.update_layout(
         title="Temperature",
         xaxis_title="Time",
-        yaxis=dict(title="Temp (°C)", side="left"),
-        legend=dict(orientation="h"),
-        transition={'duration': 100}
+        yaxis_title="Temp (°C)",
     )
 
-
-    #02/C02
     gas_fig = go.Figure()
-    gas_fig.add_trace(go.Scatter(x=x, y=list(co2_buf), mode="lines", name="CO2 ppm", yaxis="y"))
-    gas_fig.add_trace(go.Scatter(x=x, y=list(o2_buf), mode="lines", name="O2 %", yaxis="y2"))
+    gas_fig.add_trace(go.Scatter(x=x, y=co2, mode="lines", name="CO2 ppm"))
+    gas_fig.add_trace(go.Scatter(x=x, y=o2, mode="lines", name="O2 %", yaxis="y2"))
     gas_fig.update_layout(
-        title="O2/CO2 values (simulated)",
-        xaxis_title="Temps",
-        yaxis=dict(title="CO2 (ppm)", side="left"),
-        yaxis2=dict(title="O2 (%)", side="right", overlaying="y"),
-        legend=dict(orientation="h"),
-        transition={'duration': 100}
-    )
-
-    # HUM
-    hum_fig = go.Figure()
-    hum_fig.add_trace(go.Scatter(x=x, y=list(hum_buf), mode="lines", name="Humidity"))
-    hum_fig.update_layout(
-        title="Humididy",
+        title="O2 / CO2",
         xaxis_title="Time",
-        yaxis=dict(title="Humidity (%)"),
-        legend=dict(orientation="h")
+        yaxis=dict(title="CO2 (ppm)"),
+        yaxis2=dict(title="O2 (%)", overlaying="y", side="right"),
     )
 
-    # LIGHT
+    hum_fig = go.Figure()
+    hum_fig.add_trace(go.Scatter(x=x, y=hum, mode="lines", name="Humidity"))
+    hum_fig.update_layout(
+        title="Humidity",
+        xaxis_title="Time",
+        yaxis_title="Humidity (%)",
+    )
+
     light_fig = go.Figure()
-    light_fig.add_trace(go.Scatter(x=x, y=list(light_buf), mode="lines", name="Light"))
+    light_fig.add_trace(go.Scatter(x=x, y=light, mode="lines", name="Light"))
     light_fig.update_layout(
         title="Light",
         xaxis_title="Time",
         yaxis_title="Light (%)",
-        legend=dict(orientation="h"),
-        transition={'duration': 100}
     )
 
-    last_device_id = device_ids[-1]
-    last_temp  = temp_buf[-1]
-    last_hum   = hum_buf[-1]
-    last_co2   = co2_buf[-1]
-    last_o2    = o2_buf[-1]
-    last_light = light_buf[-1]
+    # -------- LAST VALUES --------
 
     return (
-        f"Station ID: {last_device_id}",
-        f"Temperature : {last_temp:.1f} °C",
-        f"Humidity : {last_hum:.1f} %",
-        f"CO2 (simulated) : {last_co2} ppm",
-        f"O2 (simulated) : {last_o2} %",
-        f"Light : {last_light} %",
+        f"Station ID: {sid}",
+        f"Temperature : {temp[-1]:.1f} °C",
+        f"Humidity : {hum[-1]:.1f} %",
+        f"CO2 (simulated) : {co2[-1]:.0f} ppm",
+        f"O2 (simulated) : {o2[-1]:.2f} %",
+        f"Light : {light[-1]:.1f} %",
         temp_fig,
         gas_fig,
         hum_fig,
-        light_fig,     
+        light_fig,
     )
+
 
 def get_or_create_station_id(device_id: str) -> int:
     with STATION_LOCK:
         if device_id in STATION_CACHE:
             return STATION_CACHE[device_id]
 
-        station_id = dbu.add_station(device_id=device_id)
+        station_id = dbutils.add_station(device_id=device_id)
         STATION_CACHE[device_id] = station_id
         return station_id
 
