@@ -7,6 +7,17 @@ def get_conn():
     return sqlite3.connect(DB_PATH)
 
 def add_station(device_id: str, location: str | None = None, room: str | None = None) -> int:
+    """ 
+        Add a new station to the database or get existing station ID.
+
+        Args:
+            device_id: Unique identifier for the device
+            location: Location description
+            room: Room name
+
+        Returns:
+            The station ID 
+    """
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
@@ -15,7 +26,6 @@ def add_station(device_id: str, location: str | None = None, room: str | None = 
     )
     conn.commit()
     
-    # Get the station_id (either just inserted or already exists)
     cur.execute("SELECT id FROM stations WHERE device_id = ?", (device_id,))
     station_id = cur.fetchone()[0]
     
@@ -23,6 +33,12 @@ def add_station(device_id: str, location: str | None = None, room: str | None = 
     return station_id
 
 def list_stations():
+    """ 
+        List all stations in the database.
+
+        Returns:
+            A list of tuples with (id, device_id, location, room)
+    """
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("SELECT id, device_id, location, room FROM stations")
@@ -39,6 +55,21 @@ def add_reading(
     light: float | None = None,
     ts: datetime | None = None,
 ):
+    """ 
+        Add a new reading to the database.  
+
+        Args:
+            station_id: ID of the station
+            temperature: Temperature value
+            humidity: Humidity value
+            co2: CO2 level
+            o2: O2 level
+            light: Light level
+            ts: Timestamp of the reading (defaults to now if None)
+
+        Returns:
+            None 
+    """
     if ts is None:
         ts = datetime.now()
     ts_str = ts.isoformat()
@@ -57,6 +88,15 @@ def add_reading(
     conn.close()
 
 def get_last_reading(station_id: int):
+    """ 
+        Retrieve the last reading for a given station.
+
+        Args:
+            station_id: ID of the station
+
+        Returns:
+            A tuple with (timestamp, temperature, humidity, co2, o2, light)
+    """
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
