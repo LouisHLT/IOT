@@ -6,6 +6,7 @@ import logging
 import threading
 from collections import deque
 from datetime import datetime
+from dotenv import load_dotenv
 import plotly.graph_objs as go
 from dash import Dash, dcc, html, Input, Output
 
@@ -14,15 +15,26 @@ from threading import Lock
 import database.utils as dbutils
 from input_parsing import parse_line
 from logger import logger
+from utils import empty_dashboard
 
 
 STATION_CACHE = {}
 STATION_LOCK = Lock()
 STATIONS = {}
-SERIAL_PORT = "/dev/ttyACM0"
+# SERIAL_PORT = "/dev/ttyACM0"
+SERIAL_PORT = "/dev/ttyUSB0"
 BAUD_RATE = 9600
 MAX_POINTS = 120              
 UPDATE_MS = 200
+
+def get_or_create_station_id(device_id: str) -> int:
+    with STATION_LOCK:
+        if device_id in STATION_CACHE:
+            return STATION_CACHE[device_id]
+
+        station_id = dbutils.add_station(device_id=device_id)
+        STATION_CACHE[device_id] = station_id
+        return station_id
 
 def make_station_buffers():
     """ 
@@ -107,6 +119,8 @@ def serial_reader():
             logger.warning(f"Serial read error: {e}")
             time.sleep(1)
 
+#---- DASHBOARD ----#
+
 t = threading.Thread(target=serial_reader, daemon=True)
 t.start()
 
@@ -115,6 +129,12 @@ app = Dash(__name__)
 app.layout = html.Div([
     html.H2("Dashboard Arduino – Environnement"),
     
+    dcc.Dropdown(
+        id="station-selector",
+        placeholder="Select a station",
+        clearable=False,
+    ),
+
     html.Div(id="device-info", style={"padding": "10px", "fontWeight": "bold", "fontSize": "16px"}),
 
     html.Div([
@@ -138,6 +158,18 @@ app.layout = html.Div([
 ])
 
 @app.callback(
+    Output("station-selector", "options"),
+    Input("interval-component", "n_intervals"),
+)
+
+def update_dashboard(_):
+    with STATION_LOCK:
+        return [
+            {"label": sid, "value": sid}
+            for sid in sorted(STATIONS.keys())
+        ]
+
+@app.callback(
     [
         Output("device-info", "children"),
         Output("value-temp", "children"),
@@ -150,33 +182,25 @@ app.layout = html.Div([
         Output("graph-humidity", "figure"),
         Output("graph-light", "figure"),
     ],
-    Input("interval-component", "n_intervals")
+    [
+        Input("interval-component", "n_intervals"),
+        Input("station-selector", "value"),
+    ],
 )
-
-def update_dashboard(n: int):
-    """
-    Update dashboard values and graphs
-    (shows the most recently active station)
-    """
+def update_dashboard(_, selected_sid):
 
     with STATION_LOCK:
         if not STATIONS:
-            empty_text = "waiting for datas..."
-            empty_fig = go.Figure()
-            return (empty_text, empty_text, empty_text, empty_text, empty_text, empty_text,
-                    empty_fig, empty_fig, empty_fig, empty_fig)
+            return empty_dashboard()
 
-        # pick the most recently updated station
-        sid, station = max(
-            STATIONS.items(),
-            key=lambda item: item[1]["last_seen"] or datetime.min
-        )
+        # if nothing selected yet → pick first station
+        if selected_sid not in STATIONS:
+            selected_sid = next(iter(STATIONS))
+
+        station = STATIONS[selected_sid]
 
         if not station["timestamps"]:
-            empty_text = "waiting for datas..."
-            empty_fig = go.Figure()
-            return (empty_text, empty_text, empty_text, empty_text, empty_text, empty_text,
-                    empty_fig, empty_fig, empty_fig, empty_fig)
+            return empty_dashboard()
 
         x = list(station["timestamps"])
         temp = list(station["temp"])
@@ -224,7 +248,7 @@ def update_dashboard(n: int):
     # -------- LAST VALUES --------
 
     return (
-        f"Station ID: {sid}",
+        f"Station ID: {selected_sid}",
         f"Temperature : {temp[-1]:.1f} °C",
         f"Humidity : {hum[-1]:.1f} %",
         f"CO2 (simulated) : {co2[-1]:.0f} ppm",
@@ -235,16 +259,6 @@ def update_dashboard(n: int):
         hum_fig,
         light_fig,
     )
-
-
-def get_or_create_station_id(device_id: str) -> int:
-    with STATION_LOCK:
-        if device_id in STATION_CACHE:
-            return STATION_CACHE[device_id]
-
-        station_id = dbutils.add_station(device_id=device_id)
-        STATION_CACHE[device_id] = station_id
-        return station_id
 
 
 debug_mode = True

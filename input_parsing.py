@@ -14,7 +14,7 @@ def parse_line(line: str):
         data = json.loads(line)
 
         return {
-            "device_id": "arduino_wired",
+            "device_id": str(data.get("id", "unknown")),
             "humidity": float(data["h"]),
             "temperature": float(data["t"]),
             "co2": float(data["co2"]),
