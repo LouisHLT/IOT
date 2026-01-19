@@ -1,37 +1,60 @@
 #include <Arduino.h>
-#include <ESP8266WiFi.h>
-#include <ESP8266HTTPClient.h>
 #include <DHT.h>
 #include <ArduinoJson.h>
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
 
-const char* ssid = "test";
-const char* password = "test";
-const char* serverUrl = "http://192.168.1.100:5000/api/data";
+const char* ssid = "iPhoneee";
+const char* password = "iot12345%";
+const char* server = "http://172.20.10.2:5000/data";
+//const char* server = "http://192.168.1.255:5000/data";
+
 
 #define DHTPIN D5
 #define DHTTYPE DHT11
 #define LUX_PIN A0
 
 DHT dht(DHTPIN, DHTTYPE);
-
 void setup() {
   Serial.begin(9600);
-  delay(2000)
+  delay(1000);
+
+  Serial.println();
+  Serial.println("BOOT");
+
   dht.begin();
 
-  Serial.println("BOOT_OK");
   Serial.print("Connecting to WiFi");
-
   WiFi.begin(ssid, password);
+
+  Serial.println("\nScanning networks...");
+  int n = WiFi.scanNetworks();
+  Serial.println("Scan done");
+  
+  if (n == 0) {
+    Serial.println("No networks found");
+  } else {
+    for (int i = 0; i < n; i++) {
+      Serial.println(WiFi.SSID(i));
+    }
+  }
+
+  int tries = 0;
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
+    tries++;
+    if (tries > 2000) {
+      Serial.println("\nWiFi FAILED");
+      return;
+    }
   }
 
-  Serial.println("\nWIFI_CONNECTED");
+  Serial.println("\nWiFi CONNECTED");
   Serial.print("IP: ");
   Serial.println(WiFi.localIP());
 }
+
 
 void loop() {
   //Read sensors
@@ -58,16 +81,14 @@ void loop() {
 }
 
 void sendData(float h, float t, float co2, float o2, float lux) {
+
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WIFI_LOST");
+    Serial.println("WiFi LOST");
     return;
   }
 
   WiFiClient client;
   HTTPClient http;
-
-  http.begin(client, serverUrl);
-  http.addHeader("Content-Type", "application/json");
 
   StaticJsonDocument<256> doc;
   doc["station_id"] = ESP.getChipId();
@@ -80,10 +101,16 @@ void sendData(float h, float t, float co2, float o2, float lux) {
   String payload;
   serializeJson(doc, payload);
 
-  int httpCode = http.POST(payload);
+  Serial.println("Sending:");
+  Serial.println(payload);
 
-  Serial.print("HTTP POST -> ");
-  Serial.println(httpCode);
+  http.begin(client, server);
+  http.addHeader("Content-Type", "application/json");
+
+  int code = http.POST(payload);
+
+  Serial.print("HTTP code: ");
+  Serial.println(code);
 
   http.end();
 }

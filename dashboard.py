@@ -3,6 +3,7 @@ import sys
 import time
 import serial
 import logging
+import requests
 import threading
 from collections import deque
 from datetime import datetime
@@ -17,15 +18,18 @@ from input_parsing import parse_line
 from logger import logger
 from utils import empty_dashboard
 
-
 STATION_CACHE = {}
 STATION_LOCK = Lock()
 STATIONS = {}
+
 # SERIAL_PORT = "/dev/ttyACM0"
 SERIAL_PORT = "/dev/ttyUSB0"
 BAUD_RATE = 9600
 MAX_POINTS = 120              
 UPDATE_MS = 200
+
+ESP_URL = "http://192.168.1.53/api"
+POLL_INTERVAL = 2  # seconds
 
 def get_or_create_station_id(device_id: str) -> int:
     with STATION_LOCK:
@@ -53,75 +57,68 @@ def make_station_buffers():
         "last_seen": None,
     }
 
-def serial_reader():
-    """ 
-        Thread function to read from serial port continuously.
-        Parses data and appends to buffers.
-
-        Args:
-            None
-
-        Returns: 
-            None
-    """
+def http_reader():
     while True:
         try:
-            with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1) as ser:
-                time.sleep(2)  # reset Arduino
-                while True:
-                    raw = ser.readline().decode("utf-8", errors="ignore").strip()
-                    if not raw:
-                        continue
-                    parsed = parse_line(raw)
-                    if parsed is None:
-                        continue
-                    
-                    parsed = parsed.copy()
+            r = requests.get(ESP_URL, timeout=2)
+            r.raise_for_status()
+            parsed = r.json()
 
-                    cleaned, was_corrected, fields = dc.oof_values(parsed)
+            parsed = {
+                "device_id": parsed.get("id", "esp8266"),
+                "temperature": parsed["t"],
+                "humidity": parsed["h"],
+                "co2": parsed["co2"],
+                "o2": parsed["o2"],
+                "light": parsed["lux"],
+            }
 
-                    sid = cleaned["device_id"]
+            cleaned, was_corrected, fields = dc.oof_values(parsed)
 
-                    with STATION_LOCK: # ensure thread-safe access to STATIONS
-                        if sid not in STATIONS: # create buffers if new station
-                            STATIONS[sid] = make_station_buffers() # initialize buffers; store the station datas
+            sid = cleaned["device_id"]
 
-                    if was_corrected:
-                        logger.warning("OOF - " + dc.format_values(parsed))
-                        logger.warning("CORRECTED: " + ", ".join(fields))
+            with STATION_LOCK: # ensure thread-safe access to STATIONS
+                if sid not in STATIONS: # create buffers if new station
+                    STATIONS[sid] = make_station_buffers() # initialize buffers; store the station datas
+                station = STATIONS[sid]
 
-                    logger.info(dc.format_values(cleaned))
 
-                    station_id = get_or_create_station_id(cleaned["device_id"]) # get or create station in DB
+            if was_corrected:
+                logger.warning("OOF - " + dc.format_values(parsed))
+                logger.warning("CORRECTED: " + ", ".join(fields))
 
-                    station = STATIONS[sid]
-                    now = datetime.now()
-                    
-                    dbutils.add_reading(
-                        station_id=station_id,
-                        temperature=cleaned["temperature"],
-                        humidity=cleaned["humidity"],
-                        co2=cleaned["co2"],
-                        o2=cleaned["o2"],
-                        light=cleaned["light"],
-                        ts=now,
-                    )
+            logger.info(dc.format_values(cleaned))
 
-                    station["timestamps"].append(now)
-                    station["temp"].append(cleaned["temperature"])
-                    station["hum"].append(cleaned["humidity"])
-                    station["co2"].append(cleaned["co2"])
-                    station["o2"].append(cleaned["o2"])
-                    station["light"].append(cleaned["light"])
-                    station["last_seen"] = now
+            station_id = get_or_create_station_id(cleaned["device_id"]) # get or create station in DB
+            now = datetime.now()
+            
+            dbutils.add_reading(
+                station_id=station_id,
+                temperature=cleaned["temperature"],
+                humidity=cleaned["humidity"],
+                co2=cleaned["co2"],
+                o2=cleaned["o2"],
+                light=cleaned["light"],
+                ts=now,
+            )
+
+            station["timestamps"].append(now)
+            station["temp"].append(cleaned["temperature"])
+            station["hum"].append(cleaned["humidity"])
+            station["co2"].append(cleaned["co2"])
+            station["o2"].append(cleaned["o2"])
+            station["light"].append(cleaned["light"])
+            station["last_seen"] = now
 
         except Exception as e:
             logger.warning(f"Serial read error: {e}")
             time.sleep(1)
 
+        time.sleep(POLL_INTERVAL)
+
 #---- DASHBOARD ----#
 
-t = threading.Thread(target=serial_reader, daemon=True)
+t = threading.Thread(target=http_reader, daemon=True)
 t.start()
 
 app = Dash(__name__)
