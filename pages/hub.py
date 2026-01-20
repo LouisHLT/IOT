@@ -6,123 +6,161 @@ from utils.utils import format_last_seen
 from config import STATIONS, STATION_LOCK
 
 
-OFFLINE_AFTER_SEC = 10  # tweak later
-
+OFFLINE_AFTER_SEC = 3.5  # tweak later
 
 def hub_layout():
-    now = datetime.now()
-
-    with STATION_LOCK:
-        stations = STATIONS.copy()
-
     return dmc.Container(
         [
-            # ---- TITLE ----
-            dmc.Title(
+            dmc.Group(
+                justify="space-between",
+                align="center",
+                mb="xl",
                 children=[
-                    html.Span("Weather Station - ", style={"color": "#595a5c", "fontFamily": "Helvetica"}),
-                    html.Span("HUB", style={"color": "#d14024", "fontFamily": "Helvetica"}),
+                    dmc.Title(
+                        children=[
+                            html.Span("Weather Station - ", style={"color": "#595a5c", "fontFamily": "Helvetica"}),
+                            html.Span("HUB", style={"color": "#d14024", "fontFamily": "Helvetica"}),
+                        ],
+                        order=2,
+                    ),
+                dmc.Space(h=30),
+                    dmc.Text("Live overview", size="sm", c="dimmed")
                 ],
-                order=2,
-            ),
-            dmc.Space(h=30),
-
-            dcc.Interval(
-                id="hub-interval",
-                interval=1000,  # 1 second
-                n_intervals=0,
             ),
 
-            # ---- STATION CARDS ----
-            html.Div(id="hub-cards"),
+            dcc.Interval(id="hub-interval", interval=1000, n_intervals=0),
 
+            dmc.Stack(id="hub-cards", gap="md"),
         ],
         size="xl",
-        pt="xl",
+        px=24,
+        py=32,
     )
 
+def metric_card(label, value, unit, accent):
+    return dmc.Card(
+        withBorder=True,
+        radius="md",
+        p="sm",
+        style={
+            "borderLeft": f"4px solid {accent}",
+            "transition": "transform 120ms ease",
+        },
+        children=[
+            dmc.Stack(
+                gap=2,
+                children=[
+                    dmc.Text(label, size="xs", c="dimmed"),
+                    dmc.Text(
+                        f"{value}{unit}" if value is not None else "—",
+                        size="xl",
+                        fw=700,
+                    ),
+                ],
+            )
+        ],
+    )
 
 def station_card(sid, station, now):
     last_seen = station.get("last_seen")
+    online = last_seen and (now - last_seen).total_seconds() < OFFLINE_AFTER_SEC
 
-    online = (
-        last_seen is not None
-        and (now - last_seen).total_seconds() < OFFLINE_AFTER_SEC
-    )
-
-    # Latest values (safe)
     temp = station["temp"][-1] if station["temp"] else None
     hum = station["hum"][-1] if station["hum"] else None
-    o2 = station["o2"][-1] if station["o2"] else None
     co2 = station["co2"][-1] if station["co2"] else None
+    o2 = station["o2"][-1] if station["o2"] else None
     light = station["light"][-1] if station["light"] else None
 
     return dmc.Card(
         withBorder=True,
-        radius="md",
-        p="lg",
+        radius="lg",
+        px=24,
+        py=20,
+        shadow="sm",
         children=[
+            # ---- HEADER ----
             dmc.Group(
                 justify="space-between",
-                align="center",
+                mb="sm",
                 children=[
-                    # ---- LEFT ICON ----
-                    html.Img(src="/assets/weather_stt_icon_nbg.png", style={"width": "54px", "height": "113px"}),
-
-                    # ---- CENTER INFO ----
-                    dmc.Stack(
-                        gap=6,
+                    dmc.Group(
+                        gap="sm",
                         children=[
+                            dmc.Text(f"Station {sid}", fw=600),
+                            dmc.Badge(
+                                "ONLINE" if online else "OFFLINE",
+                                color="green" if online else "red",
+                                variant="light",
+                            ),
                             dmc.Group(
-                                gap="md",
+                                gap=4,
                                 children=[
-                                    dmc.Text(f"Station ID: {sid}", fw=600),
-                                    dmc.Badge(
-                                        "ONLINE" if online else "OFFLINE",
-                                        c="green" if online else "red",
-                                        variant="light",
-                                    ),
+                                    dmc.Loader(size=8, color="green"),
+                                    dmc.Text("Live", size="xs", c="dimmed"),
                                 ],
-                            ),
-
-                            dmc.SimpleGrid(
-                                cols={"base": 1, "sm": 2, "md": 3, "lg": 5},
-                                spacing="xs",
-                                children=[
-                                    dmc.Text(f"Temperature (°C): {temp:.1f}", size="sm", c="black"),
-                                    dmc.Text(f"Humidity (%): {hum:.1f}", size="sm", c="black"),
-                                    dmc.Text(f"O2 (%): {o2:.1f}", size="sm", c="black"),
-                                    dmc.Text(f"CO2 (ppm): {co2:.0f}", size="sm", c="black"),
-                                    dmc.Text(f"Light (%): {light:.1f}", size="sm", c="black"),
-                                ]
-                            ) if online else dmc.Text(
-                                f"Last seen: {format_last_seen(last_seen)}",
-                                size="sm",
-                                c="black",
-                            ),
+                            ) if online else None,
                         ],
                     ),
-
-                    # ---- RIGHT BUTTON ----
                     dmc.Anchor(
                         href=f"/station/{sid}",
                         underline=False,
-                        children=[
-                            dmc.Button(
-                                "Dashboard",
-                                radius="md",
+                        children=dmc.Button(
+                            "Dashboard",
+                            radius="md",
+                            size="xs",
+                        ),
+                    ),
+                ],
+            ),
+
+            dmc.Divider(my="sm"),
+
+            # ---- BODY ----
+            dmc.Grid(
+                align="center",
+                children=[
+                    # ICON COLUMN
+                    dmc.GridCol(
+                        span={"base": 12, "md": 3},
+                        children=dmc.Center(
+                            html.Img(
+                                src="/assets/weather_stt_icon_nbg.png",
+                                style={
+                                    "height": "130px",
+                                    "filter": "drop-shadow(0 4px 6px rgba(0,0,0,.15))",
+                                },
                             )
-                        ],
-                    )
+                        ),
+                    ),
+
+                    # METRICS
+                    dmc.GridCol(
+                        span={"base": 12, "md": 9},
+                        children=(
+                            dmc.SimpleGrid(
+                                cols={"base": 2, "lg": 3},
+                                spacing="md",
+                                children=[
+                                    metric_card("Temperature", f"{temp:.1f}", "°C", "#3b82f6"),
+                                    metric_card("Humidity", f"{hum:.1f}", "%", "#14b8a6"),
+                                    metric_card("CO₂", f"{co2:.0f}", " ppm", "#64748b"),
+                                    metric_card("O₂", f"{o2:.1f}", "%", "#06b6d4"),
+                                    metric_card("Light", f"{light:.1f}", "%", "#eab308"),
+                                ],
+                            )
+                            if online
+                            else dmc.Text(
+                                f"Last seen: {format_last_seen(last_seen)}",
+                                c="dimmed",
+                                size="sm",
+                            )
+                        ),
+                    ),
                 ],
             ),
         ],
-        style={
-            "minHeight": "157px",
-            "backgroundColor": "#e9e9e9",
-            "border": "1px solid black",
-        },
     )
+
 
 def register_hub_callbacks(app):
 
