@@ -1,4 +1,4 @@
-from utils import add_reading, add_station, get_last_reading
+from utils.utils import add_reading, add_station, get_last_reading
 from create_db import init_db
 
 if __name__ == "__main__":

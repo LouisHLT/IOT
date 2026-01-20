@@ -1,5 +1,6 @@
 import plotly.graph_objects as go
 
+
 def empty_dashboard():
     """ 
         Returns empty values and figures for the dashboard when no data is available.
@@ -11,3 +12,8 @@ def empty_dashboard():
     empty_fig = go.Figure()
     return (empty_text, empty_text, empty_text, empty_text, empty_text, empty_text,
             empty_fig, empty_fig, empty_fig, empty_fig)
+
+def format_last_seen(dt):
+    if dt is None:
+        return "never"
+    return dt.strftime("%H:%M:%S %d/%m/%yY")
