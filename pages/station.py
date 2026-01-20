@@ -50,11 +50,29 @@ def station_layout(station_id):
 
             # ---- HEADER ----
             dmc.Stack(
-                gap="xs",
-                mb="lg",
+                gap="md",
+                mb="xl",
                 children=[
-                    dmc.Anchor("← Back to hub", href="/hub", size="sm"),
-                    dmc.Title(f"Station {station_id}", order=2),
+                    dmc.Anchor(
+                        href="/hub",
+                        underline=False,
+                        children=dmc.Button(
+                            "← Back to hub",
+                            variant="subtle",
+                            color="gray",
+                            size="sm",
+                            radius="md",
+                            styles={
+                                "root": {
+                                    "padding": "8px 16px",
+                                    "height": "36px",
+                                    "fontWeight": 500,
+                                    "fontSize": "14px",
+                                }
+                            },
+                        ),
+                    ),
+                    dmc.Title(f"Station {station_id}", order=2, style={"fontFamily": FONT_FAMILY}),
                 ],
             ),
 
