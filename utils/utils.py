@@ -16,4 +16,4 @@ def empty_dashboard():
 def format_last_seen(dt):
     if dt is None:
         return "never"
-    return dt.strftime("%H:%M:%S %d/%m/%yY")
+    return dt.strftime("%H:%M:%S %d/%m/%Y")
