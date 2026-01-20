@@ -1,4 +1,4 @@
-from dash import html, dcc
+from dash import html, dcc, Input, Output
 from datetime import datetime
 import dash_mantine_components as dmc
 
@@ -27,14 +27,15 @@ def hub_layout():
             ),
             dmc.Space(h=30),
 
-            # ---- STATION CARDS ----
-            dmc.Stack(
-                gap="md",
-                children=[
-                    station_card(sid, station, now)
-                    for sid, station in stations.items()
-                ],
+            dcc.Interval(
+                id="hub-interval",
+                interval=1000,  # 1 second
+                n_intervals=0,
             ),
+
+            # ---- STATION CARDS ----
+            html.Div(id="hub-cards"),
+
         ],
         size="xl",
         pt="xl",
@@ -123,3 +124,25 @@ def station_card(sid, station, now):
         },
     )
 
+def register_hub_callbacks(app):
+
+    @app.callback(
+        Output("hub-cards", "children"),
+        Input("hub-interval", "n_intervals"),
+    )
+    def update_hub(_):
+        now = datetime.now()
+
+        with STATION_LOCK:
+            stations = STATIONS.copy()
+
+        if not stations:
+            return dmc.Text("No stations connected.", c="dimmed")
+
+        return dmc.Stack(
+            gap="md",
+            children=[
+                station_card(sid, station, now)
+                for sid, station in stations.items()
+            ],
+        )

@@ -3,18 +3,20 @@ import threading
 import dash_mantine_components as dmc
 from dash import Dash, dcc, html, Input, Output
 
-from api_reader import http_reader
-import dashboard.layout as lyt
 import dashboard.callbacks as clbk
 
 from api_reader import http_reader
 from pages.hub import hub_layout
 from pages.station import station_layout
+from pages.hub import register_hub_callbacks
 
 t = threading.Thread(target=http_reader, daemon=True)
 t.start()
 
 app = Dash(__name__)
+
+clbk.register_callbacks(app)
+register_hub_callbacks(app)
 
 app.layout = dmc.MantineProvider(
     children=[
