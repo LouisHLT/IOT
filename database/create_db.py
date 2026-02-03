@@ -7,11 +7,23 @@ def init_db():
     cur = conn.cursor()
 
     cur.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
+
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS stations (
             id INTEGER PRIMARY KEY,
             device_id TEXT NOT NULL UNIQUE,
+            user_id INTEGER NOT NULL,
             location TEXT,
-            room TEXT
+            room TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
         )
     """)
 
@@ -28,6 +40,7 @@ def init_db():
             FOREIGN KEY (station_id) REFERENCES stations(id)
         )
     """)
+
 
     conn.commit()
     conn.close()

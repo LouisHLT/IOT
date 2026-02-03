@@ -100,7 +100,7 @@ def check_threshold(values):
         return(
             "light",
             "Warning Light",
-            f'Current light in the room is outside reasonable range: {values["light"]}%. Please adjust lighting.'
+            f'Current light in the room : {values["light"]}% is outside reasonable range. Please adjust lighting.'
         )
 
     # No thresholds exceeded
