@@ -1,8 +1,12 @@
 from threading import Lock
+from datetime import timedelta
 
 STATION_CACHE = {}
 STATION_LOCK = Lock()
 STATIONS = {}
+
+ALERT_STATE = {}
+ALERT_COOLDOWN = timedelta(minutes=30)
 
 # SERIAL_PORT = "/dev/ttyACM0"
 SERIAL_PORT = "/dev/ttyUSB0"

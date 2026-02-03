@@ -51,7 +51,7 @@ def format_values(values):
 
 
 
-def oof_values(parsed_data: Dict[str, Any]):#TODO dev tests to check if oot values function is working well
+def oof_values(parsed_data: Dict[str, Any]):#TODO dev tests to check if oof values function is working well
     """ 
         Check for out-of-range values and log warnings.
 
@@ -75,30 +75,24 @@ def oof_values(parsed_data: Dict[str, Any]):#TODO dev tests to check if oot valu
         corrected = True
         corrected_fields.append("TEMP")
         temp = mean([-10,50])  # set to medium temp if oof
-        print("temp oof set to medium:", temp)
     if not (10 <= hum <= 80):
         corrected = True
         corrected_fields.append("HUM")
         hum = mean([10,80])  # set to medium hum if oof
-        print("hum oof set to medium:", hum)
     if not (200 <= co2 <= 4500):
         corrected = True
         corrected_fields.append("CO2")
         co2 = mean([200,4500])  # set to medium co2 if oof
-        print("co2 oof set to medium:", co2)
     if not (5 <= o2 <= 30):
         corrected = True
         corrected_fields.append("O2")
         o2 = mean([5,30])  # set to medium o2 if oof
-        print("o2 oof set to medium:", o2)
     if not (0 <= light <= 100):
         corrected = True
         corrected_fields.append("LIGHT")
         light = mean([0,50])  # set to medium light if oof
-        print("light oof set to medium:", light)
 
-    print("corrected fields:", corrected_fields)
-    print("temp:", temp, "hum:", hum, "co2:", co2, "o2:", o2, "light:", light)
+    # print("corrected fields:", corrected_fields)
 
     cleaned = {
         "device_id": parsed_data.get("device_id", "default"),
@@ -112,8 +106,7 @@ def oof_values(parsed_data: Dict[str, Any]):#TODO dev tests to check if oot valu
     # return cleaned
     return cleaned, corrected, corrected_fields
 
-def threshold_management():
-    pass
+
 
 
 
