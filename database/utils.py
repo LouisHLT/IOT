@@ -6,7 +6,7 @@ DB_PATH = "stations.db"
 def get_conn():
     return sqlite3.connect(DB_PATH)
 
-def add_station(device_id: str, user_id: int, location: str | None = None, room: str | None = None) -> int:
+def add_station(device_id: str, location: str | None = None, room: str | None = None) -> int:
     """ 
         Add a new station to the database or get existing station ID.
 

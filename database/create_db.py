@@ -6,24 +6,32 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY,
-            username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            created_at TEXT NOT NULL
-        )
-    """)
+    # cur.execute("""
+    #     CREATE TABLE IF NOT EXISTS users (
+    #         id INTEGER PRIMARY KEY,
+    #         username TEXT UNIQUE NOT NULL,
+    #         password_hash TEXT NOT NULL,
+    #         email TEXT UNIQUE NOT NULL,
+    #         created_at TEXT NOT NULL
+    #     )
+    # """)
 
+    # cur.execute("""
+    #     CREATE TABLE IF NOT EXISTS stations (
+    #         id INTEGER PRIMARY KEY,
+    #         device_id TEXT NOT NULL UNIQUE,
+    #         user_id INTEGER NOT NULL,
+    #         location TEXT,
+    #         room TEXT,
+    #         FOREIGN KEY (user_id) REFERENCES users(id)
+    #     )
+    # """)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS stations (
             id INTEGER PRIMARY KEY,
             device_id TEXT NOT NULL UNIQUE,
-            user_id INTEGER NOT NULL,
             location TEXT,
-            room TEXT,
-            FOREIGN KEY (user_id) REFERENCES users(id)
+            room TEXT
         )
     """)
 
