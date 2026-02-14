@@ -1,5 +1,7 @@
-pyserial==3.5
-plotly==6.5.1
-dash==3.3.0
+dash==2.18.2
 dash-mantine-components==2.4.1
+plotly==5.22.0
+flask==3.0.3
+pyserial==3.5
 yagmail==0.15.293
+python-dotenv

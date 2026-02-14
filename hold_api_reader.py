@@ -65,9 +65,7 @@ def http_reader():
 
             alert_key, subject, contents = check_threshold(values_obj)
             now = datetime.now()
-            device_id = cleaned["device_id"]
-
-            manage_alert(device_id, alert_key, subject, contents, now)
+            manage_alert(cleaned["device_id"], alert_key, subject, contents, now)
 
             # Store in DB and update buffers
             station_id = get_or_create_station_id(cleaned["device_id"]) # get or create station in DB

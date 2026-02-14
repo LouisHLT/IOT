@@ -1,8 +1,8 @@
-from threading import Lock
+from threading import RLock
 from datetime import timedelta
 
 STATION_CACHE = {}
-STATION_LOCK = Lock()
+STATION_LOCK = RLock()
 STATIONS = {}
 
 ALERT_STATE = {}
@@ -14,5 +14,5 @@ BAUD_RATE = 9600
 MAX_POINTS = 120              
 UPDATE_MS = 200
 
-ESP_URL = "http://192.168.1.53/api"
-POLL_INTERVAL = 2  # seconds
+# ESP_URL = "http://192.168.1.53/api"
+# POLL_INTERVAL = 2  # seconds

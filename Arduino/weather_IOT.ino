@@ -1,116 +1,137 @@
+// Import required libraries
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
 #include <Arduino.h>
+#include <ESP8266HTTPClient.h>
 #include <DHT.h>
 #include <ArduinoJson.h>
-#include <ESP8266WiFi.h>
-#include <ESP8266HTTPClient.h>
 
-const char* ssid = "iPhoneee";
-const char* password = "iot12345%";
-const char* server = "http://172.20.10.2:5000/data";
-//const char* server = "http://192.168.1.255:5000/data";
 
+const char* ssid = "ADB-F20AC1";
+const char* password = "yxhf6p2wnmkd9gtj";
+
+ESP8266WebServer server(80);
 
 #define DHTPIN D5
 #define DHTTYPE DHT11
 #define LUX_PIN A0
-
 DHT dht(DHTPIN, DHTTYPE);
-void setup() {
-  Serial.begin(9600);
-  delay(1000);
 
-  Serial.println();
-  Serial.println("BOOT");
 
-  dht.begin();
+void handle_api() {
+  float h = dht.readHumidity();
+  float t = dht.readTemperature();
+  int luxRaw = analogRead(LUX_PIN);
 
-  Serial.print("Connecting to WiFi");
-  WiFi.begin(ssid, password);
-
-  Serial.println("\nScanning networks...");
-  int n = WiFi.scanNetworks();
-  Serial.println("Scan done");
-  
-  if (n == 0) {
-    Serial.println("No networks found");
-  } else {
-    for (int i = 0; i < n; i++) {
-      Serial.println(WiFi.SSID(i));
-    }
+  if (isnan(h) || isnan(t)) {
+    server.send(500, "application/json", "{\"error\":\"sensor\"}");
+    return;
   }
 
-  int tries = 0;
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-    tries++;
-    if (tries > 2000) {
-      Serial.println("\nWiFi FAILED");
-      return;
-    }
-  }
+  float lux = (luxRaw / 1023.0) * 100.0;
+  float co2 = random(400, 3000);
+  float o2  = random(180, 220) / 10.0;
 
-  Serial.println("\nWiFi CONNECTED");
-  Serial.print("IP: ");
-  Serial.println(WiFi.localIP());
+  StaticJsonDocument<200> doc;
+  doc["id"] = "esp8266_room1";
+  doc["t"] = t;
+  doc["h"] = h;
+  doc["co2"] = co2;
+  doc["o2"] = o2;
+  doc["lux"] = lux;
+
+  String json;
+  serializeJson(doc, json);
+  server.send(200, "application/json", json);
 }
 
-
-void loop() {
-  //Read sensors
+void handle_onConnect() {
+  //Read DHT Sensor & LDR
   float h = dht.readHumidity();
-  float t = dht.readTemperature(); // Celsius
-  int luxRaw = analogRead(LUX_PIN);     // 0–1023
-
+  float t = dht.readTemperature(); // in celsius
+  int luxRaw = analogRead(LUX_PIN); // default value is [0-1023]
   if (isnan(h) || isnan(t)) {
     Serial.println("DHT_ERROR");
     delay(2000);
     return;
   }
-
-  //Map LDR to percentage (0–100)
-  float lux = map(luxRaw, 0, 1023, 0, 100);
-
-  // Simulated o2/co2
+  float lux = (luxRaw / 1023.0) * 100.0;
+  
+  // Simulated o2/co2 values
   float co2 = random(400, 3000);
   float o2  = random(180, 220) / 10.0;
 
-  sendData(h, t, co2, o2, lux);
-  Serial.println();
-  delay(2000);
+  server.send(200, "text/html", SendHTML(h, t, co2, o2, lux));
 }
 
-void sendData(float h, float t, float co2, float o2, float lux) {
+void handle_NotFound(){
+  server.send(404, "text/plain", "Not found");
+}
 
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi LOST");
-    return;
+
+
+String SendHTML(float humidity, float temperature, float co2, float o2, float lux){
+  String ptr = "<!DOCTYPE html> <html>\n";
+  ptr +="<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n";
+  ptr +="<title>ESP8266 Weather Station</title>\n";
+  ptr +="<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}\n";
+  ptr +="body{margin-top: 50px;} h1 {color: #444444;margin: 50px auto 30px;}\n";
+  ptr +="p {font-size: 24px;color: #444444;margin-bottom: 10px;}\n";
+  ptr +="</style>\n";
+  ptr +="</head>\n";
+  ptr +="<body>\n";
+  ptr +="<div id=\"webpage\">\n";
+  ptr +="<h1>ESP8266 Weather Station</h1>\n";
+  ptr +="<p>Temperature: ";
+  ptr +=temperature;
+  ptr +="&deg;C</p>";
+  ptr +="<p>Humidity: ";
+  ptr +=humidity;
+  ptr +="%</p>";
+  ptr +="<p>CO2: ";
+  ptr +=co2;
+  ptr +=" ppm</p>";
+  ptr +="<p>O2: ";
+  ptr +=o2;
+  ptr +="%</p>";
+  ptr +="<p>Light: ";
+  ptr +=lux;
+  ptr +="%</p>";
+  ptr +="</div>\n";
+  ptr +="</body>\n";
+  ptr +="</html>\n";
+  return ptr;
+}
+
+
+void setup() {
+  Serial.begin(115200);
+  //delay(2000);
+  delay(100);
+  dht.begin();
+
+  Serial.println("Connecting to ");
+  Serial.println(ssid);
+
+  WiFi.begin(ssid, password);
+
+  while(WiFi.status() != WL_CONNECTED) {
+    delay(100);
+    Serial.print(".");
   }
+  Serial.println("");
+  Serial.println("WiFi connected!");
+  Serial.print("Got IP: ");
+  Serial.println(WiFi.localIP());
 
-  WiFiClient client;
-  HTTPClient http;
+  server.on("/", handle_onConnect);
+  server.on("/api", handle_api);
+  server.onNotFound(handle_NotFound);
 
-  StaticJsonDocument<256> doc;
-  doc["station_id"] = ESP.getChipId();
-  doc["h"] = h;
-  doc["t"] = t;
-  doc["co2"] = co2;
-  doc["o2"] = o2;
-  doc["lux"] = lux;
+  server.begin();
+  Serial.println("HTTP sever started");
+}
 
-  String payload;
-  serializeJson(doc, payload);
-
-  Serial.println("Sending:");
-  Serial.println(payload);
-
-  http.begin(client, server);
-  http.addHeader("Content-Type", "application/json");
-
-  int code = http.POST(payload);
-
-  Serial.print("HTTP code: ");
-  Serial.println(code);
-
-  http.end();
+void loop() {
+  server.handleClient();
 }

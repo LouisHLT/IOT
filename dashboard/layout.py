@@ -49,14 +49,14 @@ def build_layout():
             # HEADER
             # ======================
             dmc.Stack(
-                gap="xs",
+                spacing="xs",
                 mb="lg",
                 children=[
                     dmc.Title("Environment Dashboard", order=2),
                     dmc.Text(
                         "Live data from connected weather stations",
                         size="sm",
-                        c="dimmed",
+                        color="dimmed",
                     ),
                 ],
             ),
@@ -80,7 +80,8 @@ def build_layout():
             # KPI CARDS
             # ======================
             dmc.SimpleGrid(
-                cols={"base": 2, "md": 5},
+                # cols={"base": 2, "md": 5},
+                cols=2,
                 spacing="md",
                 mb="xl",
                 children=[
@@ -98,7 +99,7 @@ def build_layout():
             dmc.Grid(
                 gutter="md",
                 children=[
-                    dmc.GridCol(
+                    dmc.Col(
                         span={"base": 12, "md": 6},
                         children=dmc.Card(
                             withBorder=True,
@@ -110,7 +111,7 @@ def build_layout():
                             ),
                         ),
                     ),
-                    dmc.GridCol(
+                    dmc.Col(
                         span={"base": 12, "md": 6},
                         children=dmc.Card(
                             withBorder=True,
@@ -122,7 +123,7 @@ def build_layout():
                             ),
                         ),
                     ),
-                    dmc.GridCol(
+                    dmc.Col(
                         span={"base": 12, "md": 6},
                         children=dmc.Card(
                             withBorder=True,
@@ -134,7 +135,7 @@ def build_layout():
                             ),
                         ),
                     ),
-                    dmc.GridCol(
+                    dmc.Col(
                         span={"base": 12, "md": 6},
                         children=dmc.Card(
                             withBorder=True,
