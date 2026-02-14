@@ -78,7 +78,8 @@ def station_card(sid, station, now):
                     dmc.Group(
                         gap="sm",
                         children=[
-                            dmc.Text(f"Station {sid}", fw=600),
+                            html.Img(src="/assets/weather_stt_icon_nbg.png", style={"height": "72px"}),
+                            dmc.Text(f"Station: {sid}", fw=600),
                             dmc.Badge(
                                 "ONLINE" if online else "OFFLINE",
                                 color="green" if online else "red",
