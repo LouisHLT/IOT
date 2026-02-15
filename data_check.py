@@ -1,45 +1,6 @@
 from statistics import mean
 from typing import Dict, Any
 
-"""
-VALUES MIN, MAX FOR ERROR/SMOOTHING
-
--10 < Tem < 50
-10% < Hum < 80%
-200ppm < CO2 < 4500ppm
-5% < O2 < 30%
-0% < light < 100%
-"""
-
-"""
-VALUES THRESHOLD
-
-HUM
-40% < Hum (50%) < 60%
-
-TEMP
-confort range: 18° < temp < 24°
-bedroom range: 16° < temp < 19°
-living room range: 20° < temp < 22°
-
-CO2
-< 600 ppm: Excellent ventilation.
-600-1000 ppm: Good to fair ventilation; typical for occupied indoor spaces.
-> 1000 ppm: Poor air quality, associated with drowsiness, stuffiness, and poor concentration.
-> 2000 ppm: Headaches, sleepiness, poor focus, increased heart rate, slight nausea. 
-
-O2
-20.9%: Normal, fresh air.
-19.5%: Minimum "safe level" for entry into a confined space or workplace without respiratory protection. Adverse physiological effects may not be noticeable at first.
-16% - 19%: Impaired thinking and coordination, increased breathing and pulse rates, and reduced ability to work strenuously.
-10% - 14%: Poor judgment, abnormal fatigue, emotional upset, and impaired respiration.
-6% - 10%: Nausea, vomiting, lethargy, loss of consciousness, and potentially permanent heart damage.
-Less than 6%: Convulsions, cessation of breathing, cardiac arrest, and death within a few minutes. 
-
-LIGHT
-General Home Areas (Living Room, Bedroom): 5–20% (50-200 lux), with flexibility
-"""
-
 def format_values(values):
     device_id = values.get('device_id', 'unknown')
     return (f"[Device:{device_id}] "
